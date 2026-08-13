@@ -1,0 +1,23 @@
+# Root
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+
+# Dependencies / builds
+node_modules/
+dist/
+build/
+.expo/
+web-build/
+coverage/
+
+# GeoNames raw dumps (download via npm run geonames:import-india)
+backend/data/geonames/download/
+
+# IDE / local
+.idea/
+.vscode/
+*.swp
+.cursor/
