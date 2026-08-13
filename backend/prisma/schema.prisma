@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String?
+  provider     String   @default("email")
+  providerId   String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  profile            UserProfile?
+  posts              Post[]
+  savedCities        SavedCity[]
+  savedExperiences   SavedExperience[]
+  pushTokens         PushToken[]
+  notifications      Notification[]
+  notificationPrefs  NotificationPreference?
+  cityStories        CityStory[]
+
+  @@unique([provider, providerId])
+  @@index([provider])
+}
+
+model UserProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  /// Canonical City.id (cuid). Legacy rows may still hold a slug until migrate-cities runs.
+  homeCityId  String?
+  homeCity    String?
+  interests   String   @default("[]")
+  travelStyle String?
+  aboutCity   String?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([homeCityId])
+}
+
+model Country {
+  id         String   @id @default(cuid())
+  geonameId  Int      @unique
+  name       String
+  asciiName  String
+  iso2       String   @unique
+  iso3       String?
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  regions AdminRegion[]
+  cities  City[]
+
+  @@index([name])
+  @@index([asciiName])
+}
+
+model AdminRegion {
+  id         String   @id @default(cuid())
+  geonameId  Int      @unique
+  countryId  String
+  name       String
+  asciiName  String
+  code       String?
+  latitude   Float?
+  longitude  Float?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities  City[]
+
+  @@index([countryId])
+  @@index([name])
+  @@index([asciiName])
+}
+
+model City {
+  id               String   @id @default(cuid())
+  geonameId        Int?     @unique
+  slug             String   @unique
+  name             String
+  asciiName        String?
+  normalizedName   String   @default("")
+  /// Denormalized display labels (kept for legacy API consumers)
+  state            String?
+  country          String   @default("India")
+  countryId        String?
+  stateId          String?
+  latitude         Float?
+  longitude        Float?
+  population       Int?
+  timezone         String?
+  featureClass     String?
+  featureCode      String?
+  /// ACTIVE | COMING_SOON | HIDDEN
+  status           String   @default("ACTIVE")
+  description      String?
+  weather          String?
+  tempC            Int?
+  moodJson         String   @default("[]")
+  briefing         String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  countryRef Country?     @relation(fields: [countryId], references: [id], onDelete: SetNull)
+  stateRef   AdminRegion? @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  aliases    CityAlias[]
+  stories    CityStory[]
+  posts      Post[]
+  savedBy    SavedCity[]
+  savedExperiences SavedExperience[]
+
+  @@index([name])
+  @@index([normalizedName])
+  @@index([countryId])
+  @@index([stateId])
+  @@index([status, population])
+  @@index([status, normalizedName])
+}
+
+model CityAlias {
+  id               String   @id @default(cuid())
+  cityId           String
+  alias            String
+  normalizedAlias  String
+  language         String?
+  source           String   @default("geonames")
+  createdAt        DateTime @default(now())
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@unique([cityId, normalizedAlias])
+  @@index([normalizedAlias])
+}
+
+/// AASPAAS experience content — not geographic truth
+model CityStory {
+  id        String   @id @default(cuid())
+  cityId    String
+  userId    String
+  content   String
+  /// ONBOARDING | COMMUNITY
+  source    String   @default("ONBOARDING")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([cityId, createdAt])
+  @@index([userId])
+}
+
+model Post {
+  id           String    @id @default(cuid())
+  authorId     String
+  cityId       String
+  type         String
+  text         String
+  neighborhood String?
+  vibeTagsJson String    @default("[]")
+  moderation   String    @default("visible")
+  expiresAt    DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  city   City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([cityId, createdAt])
+  @@index([type])
+}
+
+model SavedCity {
+  id        String   @id @default(cuid())
+  userId    String
+  cityId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, cityId])
+  @@index([userId])
+}
+
+model SavedExperience {
+  id         String   @id @default(cuid())
+  userId     String
+  cityId     String
+  title      String
+  body       String?
+  source     String   @default("custom")
+  sourceId   String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  city City @relation(fields: [cityId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, cityId])
+  @@unique([userId, sourceId])
+}
+
+model RagChunk {
+  id            String                       @id @default(cuid())
+  citySlug      String
+  sourceType    String
+  sourceId      String
+  title         String
+  body          String
+  neighborhood  String?
+  vibeTagsJson  String                       @default("[]")
+  authorName    String?
+  trust         Float                        @default(0.7)
+  /// pgvector column — written/queried via raw SQL (Prisma Unsupported)
+  embedding     Unsupported("vector(384)")?
+  model         String                       @default("local-hash-v1")
+  dims          Int                          @default(384)
+  expiresAt     DateTime?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  @@unique([sourceType, sourceId])
+  @@index([citySlug, createdAt])
+  @@index([sourceType])
+}
+
+model PushToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   @default("unknown")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model NotificationPreference {
+  id                   String   @id @default(cuid())
+  userId               String   @unique
+  questionsInHomeCity  Boolean  @default(true)
+  updatesInCurrentCity Boolean  @default(true)
+  currentCitySlug      String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  citySlug  String?
+  dataJson  String    @default("{}")
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, readAt])
+}
