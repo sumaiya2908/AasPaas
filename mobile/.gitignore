@@ -41,3 +41,7 @@ yarn-error.*
 /ios
 /android
 .claude/
+
+AGENTS.md
+CLAUDE.md
+.claude/
