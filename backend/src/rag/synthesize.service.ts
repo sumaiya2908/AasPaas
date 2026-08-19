@@ -32,13 +32,15 @@ export class SynthesizeService {
         citations: [],
         mode: 'empty_corpus',
         retrieved: 0,
-        grounded: true,
+        grounded: false,
+        confidence: 0,
         policy: 'citations_only',
       };
     }
 
     const lead = hits[0];
     const support = hits.slice(1, 3);
+    const confidence = Number(Math.min(1, Math.max(0, lead.score)).toFixed(3));
 
     // Quote-only answer — no invented connective claims about the city
     const lines = [
@@ -57,6 +59,7 @@ export class SynthesizeService {
       mode: 'rag',
       retrieved: hits.length,
       grounded: true,
+      confidence,
       policy: 'citations_only',
     };
   }
@@ -84,25 +87,27 @@ export class SynthesizeService {
 
     if (!hits.length) {
       return {
-        source: 'community_first_demo',
+        source: 'empty_corpus',
         suggestedStops: [],
         whyByTheme: [],
         citations: [],
         retrieved: 0,
-        grounded: true,
+        grounded: false,
+        confidence: 0,
         policy: 'citations_only',
       };
     }
 
-    const suggestedStops = hits.slice(0, Math.min(5, hits.length)).map((h) => ({
-      title: h.title,
-      reason: clip(h.body, 140),
+    const suggestedStops = hits.slice(0, Math.min(8, hits.length)).map((h) => ({
+      title: stopTitle(h),
+      reason: clip(h.body, 160),
       neighborhood: h.neighborhood,
       why: whyLine(h, cityName),
       citationId: h.id,
     }));
 
     const themes = groupThemes(hits);
+    const confidence = Number(Math.min(1, Math.max(0, hits[0].score)).toFixed(3));
 
     return {
       source: 'rag',
@@ -111,6 +116,7 @@ export class SynthesizeService {
       citations: toCitations(hits),
       retrieved: hits.length,
       grounded: true,
+      confidence,
       policy: 'citations_only',
     };
   }
@@ -119,6 +125,19 @@ export class SynthesizeService {
 function clip(s: string, n: number) {
   const t = s.trim();
   return t.length <= n ? t : `${t.slice(0, n - 1)}…`;
+}
+
+function stopTitle(h: RetrievedChunk) {
+  const generic = /^(community experience|local question|avoid note|evening pulse)$/i;
+  if (h.title && !generic.test(h.title.trim())) return h.title.trim();
+  if (h.neighborhood?.trim()) {
+    const first = h.body.trim().split(/[.!?\n]/)[0]?.trim();
+    if (first && first.length <= 48) return first;
+    return `Near ${h.neighborhood.trim()}`;
+  }
+  const first = h.body.trim().split(/[.!?\n]/)[0]?.trim();
+  if (first) return first.length <= 48 ? first : `${first.slice(0, 46)}…`;
+  return h.title || 'A local moment';
 }
 
 function whyLine(h: RetrievedChunk, cityName: string) {

@@ -127,41 +127,80 @@ export class IngestService {
     return { upserted: results.length };
   }
 
-  /** Backfill: vectorize every visible post into RagChunk. */
-  async reindexPosts() {
-    const posts = await this.prisma.post.findMany({
-      where: { moderation: 'visible' },
-      include: {
-        author: { select: { name: true } },
-        city: { select: { slug: true } },
-      },
-      take: 500,
-    });
+  /** Remove RAG chunks tied to a post (on delete / moderation). */
+  async deleteChunksForPost(postId: string) {
+    const sourceTypes = ['community', 'local_update'] as const;
+    for (const sourceType of sourceTypes) {
+      await this.prisma.ragChunk.deleteMany({
+        where: {
+          sourceType,
+          sourceId: `post:${postId}`,
+        },
+      });
+    }
+  }
 
+  /** Backfill: vectorize visible posts into RagChunk (batched). */
+  async reindexPosts() {
+    const pageSize = 200;
+    let skip = 0;
     let upserted = 0;
-    for (const post of posts) {
-      await this.upsertChunk({
-        citySlug: post.city.slug,
-        sourceType: post.type === 'avoid' ? 'local_update' : 'community',
-        sourceId: `post:${post.id}`,
-        title:
+    let scanned = 0;
+
+    for (;;) {
+      const posts = await this.prisma.post.findMany({
+        where: { moderation: 'visible' },
+        include: {
+          author: { select: { name: true } },
+          city: { select: { slug: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        take: pageSize,
+        skip,
+      });
+      if (!posts.length) break;
+
+      for (const post of posts) {
+        const vibeTags = JSON.parse(post.vibeTagsJson || '[]') as string[];
+        const title =
           post.type === 'avoid'
             ? 'Avoid note'
             : post.type === 'question'
               ? 'Local question'
-              : 'Community experience',
-        body: post.text,
-        neighborhood: post.neighborhood,
-        vibeTags: JSON.parse(post.vibeTagsJson || '[]') as string[],
-        authorName: post.author.name,
-        trust: 0.75,
-        expiresAt: post.expiresAt,
-        createdAt: post.createdAt,
-      });
-      upserted += 1;
+              : post.neighborhood?.trim()
+                ? post.neighborhood.trim()
+                : clipTitle(post.text);
+
+        await this.upsertChunk({
+          citySlug: post.city.slug,
+          sourceType: post.type === 'avoid' ? 'local_update' : 'community',
+          sourceId: `post:${post.id}`,
+          title,
+          body: post.text,
+          neighborhood: post.neighborhood,
+          vibeTags,
+          authorName: post.author.name,
+          trust: 0.75,
+          expiresAt: post.expiresAt,
+          createdAt: post.createdAt,
+        });
+        upserted += 1;
+      }
+
+      scanned += posts.length;
+      skip += posts.length;
+      if (posts.length < pageSize) break;
+      // Cap one run so demos don’t hang forever — ~2k posts
+      if (scanned >= 2000) break;
     }
-    return { upserted, scanned: posts.length };
+
+    return { upserted, scanned };
   }
+}
+
+function clipTitle(text: string) {
+  const first = text.trim().split(/[.!?\n]/)[0]?.trim() || 'Community experience';
+  return first.length <= 48 ? first : `${first.slice(0, 46)}…`;
 }
 
 const DEMO_CORPUS: IngestChunkInput[] = [

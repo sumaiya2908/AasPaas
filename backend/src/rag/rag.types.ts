@@ -53,12 +53,15 @@ export type RagQueryResult = {
   citations: RagCitation[];
   mode: 'rag' | 'empty_corpus';
   retrieved: number;
+  /** true only when answer is built from retrieved citations */
   grounded: boolean;
+  /** 0–1 retrieval confidence (top hit score after rerank) */
+  confidence: number;
   policy: 'citations_only';
 };
 
 export type RagJourneyResult = {
-  source: 'rag' | 'community_first_demo';
+  source: 'rag' | 'empty_corpus' | 'community_first_demo';
   suggestedStops: {
     title: string;
     reason: string;
@@ -70,6 +73,7 @@ export type RagJourneyResult = {
   citations: RagCitation[];
   retrieved: number;
   grounded: boolean;
+  confidence: number;
   policy: 'citations_only';
 };
 

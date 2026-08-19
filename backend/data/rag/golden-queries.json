@@ -1,0 +1,25 @@
+[
+  {
+    "id": "jaipur-quiet-evening",
+    "citySlug": "jaipur",
+    "query": "quiet evening food old city",
+    "minCitations": 1,
+    "mustNotBeEmpty": true,
+    "forbiddenAnswerPatterns": ["must visit", "top rated", "tripadvisor"]
+  },
+  {
+    "id": "jaipur-avoid-crowd",
+    "citySlug": "jaipur",
+    "query": "avoid crowds parking amer fort",
+    "minCitations": 0,
+    "mustNotBeEmpty": false
+  },
+  {
+    "id": "unknown-city-refusal",
+    "citySlug": "nonexistent-city-slug-xyz",
+    "query": "best restaurants tonight",
+    "minCitations": 0,
+    "mustNotBeEmpty": false,
+    "expectMode": "empty_corpus"
+  }
+]

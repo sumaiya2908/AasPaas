@@ -88,7 +88,7 @@ export function CitySearchSheet({ visible, onClose, onSelect, popular = [] }: Pr
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.topRow}>
-          <Text style={styles.kicker}>Where do you want to feel?</Text>
+          <Text style={styles.kicker}>Where should we take you?</Text>
           <Pressable onPress={onClose} hitSlop={12}>
             <Text style={styles.close}>Close</Text>
           </Pressable>

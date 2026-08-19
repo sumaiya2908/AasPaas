@@ -260,7 +260,8 @@ export class CitiesService {
       }));
   }
 
-  /** Recent community signals for a city (Today section). */
+  /** Recent time-sensitive signals for a city (Today section).
+   *  Excludes experience posts — those belong under People / City Pulse. */
   async today(idOrSlug: string) {
     const city = await this.resolveCityRow(idOrSlug);
     const since = new Date(Date.now() - 36 * 60 * 60 * 1000);
@@ -269,6 +270,7 @@ export class CitiesService {
         cityId: city.id,
         moderation: 'visible',
         createdAt: { gte: since },
+        type: { in: ['avoid'] },
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
       },
       include: {
@@ -305,7 +307,7 @@ export class CitiesService {
     const city = await this.resolveCityRow(idOrSlug);
     const take = Math.min(Math.max(limit, 1), 20);
 
-    const [posts, stories] = await Promise.all([
+    const [posts, stories, experienceCount] = await Promise.all([
       this.prisma.post.findMany({
         where: {
           cityId: city.id,
@@ -323,7 +325,25 @@ export class CitiesService {
         orderBy: { createdAt: 'desc' },
         take,
       }),
+      this.prisma.post.count({
+        where: {
+          cityId: city.id,
+          type: 'experience',
+          moderation: 'visible',
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      }),
     ]);
+
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const weekCount = await this.prisma.post.count({
+      where: {
+        cityId: city.id,
+        type: 'experience',
+        moderation: 'visible',
+        createdAt: { gte: weekAgo },
+      },
+    });
 
     const fromPosts = posts.map((p) => ({
       id: p.id,
@@ -340,7 +360,10 @@ export class CitiesService {
     const fromStories = stories.map((s) => ({
       id: s.id,
       source: 'story' as const,
-      title: s.source === 'ONBOARDING' ? 'A feeling from someone who lives here' : 'Community note',
+      title:
+        s.source === 'ONBOARDING'
+          ? 'A feeling from someone who lives here'
+          : 'Community note',
       body: s.content,
       neighborhood: null as string | null,
       vibeTags: [] as string[],
@@ -359,9 +382,11 @@ export class CitiesService {
     return {
       city: this.toPublic(city),
       items: merged,
+      experienceCount,
+      weekCount,
       emptyMessage:
         merged.length === 0
-          ? 'Just getting started on AASPAAS.'
+          ? 'People are just starting to share what this city means to them.'
           : null,
     };
   }

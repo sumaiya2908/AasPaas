@@ -6,12 +6,22 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './jwt.strategy';
 import { UsersModule } from '../users/users.module';
 
+const jwtSecret =
+  process.env.JWT_SECRET ||
+  (process.env.NODE_ENV === 'production'
+    ? undefined
+    : 'aaspaas-dev-secret-change-me');
+
+if (!jwtSecret) {
+  throw new Error('JWT_SECRET is required');
+}
+
 @Module({
   imports: [
     UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'aaspaas-dev-secret-change-me',
+      secret: jwtSecret,
       signOptions: { expiresIn: '30d' },
     }),
   ],

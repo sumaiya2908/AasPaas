@@ -212,6 +212,8 @@ export function fetchCityExperiences(cityIdOrSlug: string, limit = 6) {
   return apiRequest<{
     city: ApiCity;
     items: ApiExperienceItem[];
+    experienceCount?: number;
+    weekCount?: number;
     emptyMessage: string | null;
   }>(`/cities/${encodeURIComponent(cityIdOrSlug)}/experiences?${qs}`);
 }
@@ -339,7 +341,7 @@ export type RagCitation = {
 };
 
 export type RagJourneyResponse = {
-  source: 'rag' | 'community_first_demo';
+  source: 'rag' | 'empty_corpus' | 'community_first_demo';
   suggestedStops: {
     title: string;
     reason: string;
@@ -349,6 +351,8 @@ export type RagJourneyResponse = {
   whyByTheme: { theme: string; summary: string }[];
   citations: RagCitation[];
   retrieved: number;
+  grounded?: boolean;
+  confidence?: number;
 };
 
 export type RagQueryResponse = {
@@ -356,6 +360,8 @@ export type RagQueryResponse = {
   citations: RagCitation[];
   mode: 'rag' | 'empty_corpus';
   retrieved: number;
+  grounded?: boolean;
+  confidence?: number;
 };
 
 export function ragHealth() {

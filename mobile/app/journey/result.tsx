@@ -64,6 +64,9 @@ export default function JourneyResultScreen() {
                   <View style={styles.stopBody}>
                     <Text style={styles.time}>{stop.time}</Text>
                     <Text style={styles.stopTitle}>{stop.title}</Text>
+                    {stop.place ? (
+                      <Text style={styles.place}>{stop.place}</Text>
+                    ) : null}
                     <Body style={{ marginTop: 4 }}>{stop.reason}</Body>
                     {stop.why ? (
                       <View style={styles.whyBox}>
@@ -188,6 +191,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.displayMedium,
     fontSize: 18,
     color: colors.text,
+  },
+  place: {
+    marginTop: 4,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 13,
+    color: colors.accent,
   },
   whyBox: {
     marginTop: 10,

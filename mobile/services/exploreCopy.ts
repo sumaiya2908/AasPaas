@@ -13,8 +13,9 @@ export function cityExploreLine(city: { slug?: string; id: string; name: string;
   const identity = getCityIdentity(key, city.name);
   if (
     identity.tagline &&
-    !identity.tagline.includes('waiting to be felt') &&
-    !identity.tagline.includes('still getting to know')
+    !identity.tagline.toLowerCase().includes('waiting to be felt') &&
+    !identity.tagline.toLowerCase().includes('still getting to know') &&
+    !identity.tagline.toLowerCase().startsWith('discover ')
   ) {
     // Prefer human invite over raw vibe tagline on Home continue cards
     return `See ${city.name} through the people who know it.`;

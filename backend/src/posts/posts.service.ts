@@ -102,6 +102,7 @@ export class PostsService {
     if (post.authorId !== authorId) {
       throw new ForbiddenException('You can only delete your own posts');
     }
+    await this.ingest.deleteChunksForPost(postId);
     await this.prisma.post.delete({ where: { id: postId } });
     return { ok: true };
   }

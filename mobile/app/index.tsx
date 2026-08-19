@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/theme';
+import { loadAccessToken } from '@/services/secureSession';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -17,12 +18,34 @@ export default function Gate() {
   const setHasHydrated = useAppStore((s) => s.setHasHydrated);
 
   useEffect(() => {
-    const unsub = useAppStore.persist.onFinishHydration(() => setHasHydrated(true));
-    if (useAppStore.persist.hasHydrated()) setHasHydrated(true);
-    const fallback = setTimeout(() => setHasHydrated(true), 1500);
+    let cancelled = false;
+    const finish = async () => {
+      const token = await loadAccessToken();
+      if (cancelled) return;
+      if (token) {
+        useAppStore.setState({ accessToken: token });
+      }
+      setHasHydrated(true);
+    };
+
+    const unsub = useAppStore.persist.onFinishHydration(() => {
+      void finish();
+    });
+    if (useAppStore.persist.hasHydrated()) {
+      void finish();
+    } else {
+      const fallback = setTimeout(() => {
+        void finish();
+      }, 1500);
+      return () => {
+        cancelled = true;
+        unsub();
+        clearTimeout(fallback);
+      };
+    }
     return () => {
+      cancelled = true;
       unsub();
-      clearTimeout(fallback);
     };
   }, [setHasHydrated]);
 

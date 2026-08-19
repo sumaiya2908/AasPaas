@@ -45,36 +45,40 @@ export function buildJourney(input: JourneyInput): {
         stops: [
           {
             time: 'Morning',
-            title: `Settle into ${city.name}`,
-            reason: `Start slow. Today's pulse: ${city.mood.slice(0, 2).join(', ').toLowerCase()}.`,
+            title: savedLead?.title ?? momentLead?.feeling ?? `First hours in ${city.name}`,
+            place: savedLead ? undefined : momentLead?.placeHint,
+            reason:
+              savedLead?.body ??
+              momentLead?.story ??
+              `Start with a slow loop — then ask locals what ${city.name} is doing today.`,
             budget: '₹0',
           },
           {
             time: 'Afternoon',
-            title: savedLead?.title ?? primary?.name ?? 'Local market walk',
-            place: primary?.name,
+            title:
+              savedSecond?.title ??
+              primary?.name ??
+              momentFood?.feeling ??
+              'Follow a local food note',
+            place: primary?.name ?? momentFood?.placeHint,
             reason:
-              savedLead?.body ??
+              savedSecond?.body ??
               primary?.aiSummary ??
-              `Explore a local favorite matching your ${input.style.toLowerCase()} style.`,
+              momentFood?.story ??
+              `Built around your ${input.food.toLowerCase()} preference — skip the tourist checklist.`,
             budget: input.budget.includes('Under') ? '₹300' : '₹600',
           },
           {
             time: 'Evening',
             title:
-              momentLead?.feeling ??
+              moments[1]?.feeling ??
               city.trending[0]?.label.replace(/^[^ ]+ /, '') ??
-              'Catch the evening vibe',
+              'Evening with locals',
+            place: moments[1]?.placeHint,
             reason:
-              momentLead?.story ??
-              `Community says this is trending today. Food preference: ${input.food}.`,
+              moments[1]?.story ??
+              `Ask one specific question in AASPAAS tonight — answers beat generic “top spots”.`,
             budget: input.budget.includes('4k') ? '₹900' : '₹450',
-          },
-          {
-            time: 'Night',
-            title: 'Ask locals one question',
-            reason: 'Drop a question in AASPAAS — tonight’s answers are freshest.',
-            budget: '₹0',
           },
         ],
       };
@@ -86,26 +90,29 @@ export function buildJourney(input: JourneyInput): {
       stops: [
         {
           time: 'Morning',
-          title: savedSecond?.title ?? secondary?.name ?? 'Sunrise / quiet walk',
-          place: secondary?.name,
+          title: secondary?.name ?? moments[2]?.feeling ?? 'Quiet morning walk',
+          place: secondary?.name ?? moments[2]?.placeHint,
           reason:
-            savedSecond?.body ??
             secondary?.experiences[0]?.body ??
+            moments[2]?.story ??
             'Follow a local recommendation before crowds build.',
           budget: '₹200',
         },
         {
           time: 'Afternoon',
-          title: momentFood?.feeling ?? `${input.food} lunch crawl`,
+          title: momentFood?.feeling ?? `${input.food} with locals`,
+          place: momentFood?.placeHint,
           reason:
             momentFood?.story ??
-            `Built around your ${input.food.toLowerCase()} preference and ${input.budget} budget.`,
+            `Keep it specific to your ${input.food.toLowerCase()} preference — not a must-visit list.`,
           budget: input.budget.includes('Under') ? '₹350' : '₹700',
         },
         {
           time: 'Evening',
-          title: city.localUpdates[0]?.text ?? 'Follow a live local update',
-          reason: 'Pulled from today’s Local Updates so the plan stays alive.',
+          title: city.localUpdates[0]?.text ?? 'Check today’s local notes',
+          reason: city.localUpdates[0]
+            ? 'Pulled from a live local update.'
+            : 'Open Today on the city page — only real signals belong here.',
           budget: '₹400',
         },
       ],

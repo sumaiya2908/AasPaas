@@ -23,9 +23,10 @@ type AskFormProps = {
   embedded?: boolean;
   placeId?: string;
   placeName?: string;
+  prefill?: string;
 };
 
-export function AskForm({ embedded, placeId, placeName }: AskFormProps) {
+export function AskForm({ embedded, placeId, placeName, prefill }: AskFormProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cityId = useAppStore((s) => s.selectedCityId) ?? 'jaipur';
@@ -38,7 +39,10 @@ export function AskForm({ embedded, placeId, placeName }: AskFormProps) {
   const city = getCity(cityId, customCities);
   const canAsk = Boolean(user) && !isGuest;
 
-  const [text, setText] = useState(placeName ? `Any local tips for ${placeName}?` : '');
+  const [text, setText] = useState(
+    prefill?.trim() ||
+      (placeName ? `Any local tips for ${placeName}?` : ''),
+  );
   const [selectedTags, setSelectedTags] = useState<string[]>(['Food']);
   const [posted, setPosted] = useState(false);
 

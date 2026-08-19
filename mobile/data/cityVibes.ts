@@ -1,6 +1,6 @@
 /**
- * Long-term City Vibe identity — separate from temporary "Today" signals.
- * Seeded from community patterns; evolves slowly.
+ * Long-term City Pulse identity — separate from temporary "Today" signals.
+ * Seeded from community patterns; evolves slowly. Ready for RAG enrichment later.
  */
 
 export type CityVibeFacet = {
@@ -57,7 +57,7 @@ const IDENTITY: Record<string, CityIdentity> = {
     ],
     localTake:
       'When the Chinese nets silhouette against the sky, walk until the ferries look like lanterns. That’s Kochi exhaling.',
-    localAuthor: 'Someone from Fort Kochi',
+    localAuthor: 'A traveler who stayed too long',
   },
   hampi: {
     tagline: 'Ruins, sunrise, and silence between the boulders.',
@@ -73,15 +73,31 @@ const IDENTITY: Record<string, CityIdentity> = {
   },
 };
 
-export function getCityIdentity(cityId: string, cityName?: string): CityIdentity {
-  return (
-    IDENTITY[cityId] ?? {
-      tagline: cityName
-        ? `Still getting to know ${cityName}.`
-        : 'Still getting to know this city.',
-      vibes: DEFAULT_VIBES,
-      localTake: 'Be the first to share an experience from this city.',
-      localAuthor: 'AasPaas',
-    }
-  );
+export function getCityIdentity(
+  cityId: string,
+  cityName?: string,
+  opts?: { briefing?: string | null },
+): CityIdentity {
+  const curated = IDENTITY[cityId];
+  if (curated) return curated;
+
+  const briefing = opts?.briefing?.trim();
+  const usableBriefing =
+    briefing &&
+    !briefing.includes('Community pulse will fill') &&
+    !briefing.includes('ready to explore')
+      ? briefing
+      : null;
+
+  const name = cityName || 'this city';
+  return {
+    tagline:
+      usableBriefing ||
+      `Discover ${name} through local moments and stories.`,
+    vibes: DEFAULT_VIBES,
+    localTake: usableBriefing
+      ? usableBriefing
+      : `Slow down. Wander a little.\nThe city tends to reveal itself.`,
+    localAuthor: 'AasPaas',
+  };
 }

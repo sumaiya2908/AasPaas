@@ -40,6 +40,7 @@ export class RetrieveService {
     const topK = input.topK ?? 6;
     const candidateK = input.candidateK ?? Math.max(24, topK * 4);
     const now = new Date();
+    const citySlug = await this.resolveCitySlug(input.citySlug);
     const { vector: qVec } = await this.embeddings.embed(input.query);
     const vecSql = pgVectorSql(qVec);
 
@@ -64,7 +65,7 @@ export class RetrieveService {
         "createdAt",
         (1 - (embedding <=> ${vecSql}))::float8 AS semantic
       FROM "RagChunk"
-      WHERE "citySlug" = ${input.citySlug}
+      WHERE "citySlug" = ${citySlug}
         AND embedding IS NOT NULL
         AND ("expiresAt" IS NULL OR "expiresAt" > ${now})
         ${typeFilter}
@@ -115,5 +116,29 @@ export class RetrieveService {
     });
 
     return this.rerank.rerank(input.query, candidates, topK);
+  }
+
+  /** Accept slug, cuid, or plain name → canonical citySlug used on RagChunk. */
+  private async resolveCitySlug(raw: string): Promise<string> {
+    const key = raw.trim();
+    if (!key) return key;
+
+    const byIdOrSlug = await this.prisma.city.findFirst({
+      where: {
+        OR: [{ id: key }, { slug: key }],
+      },
+      select: { slug: true },
+    });
+    if (byIdOrSlug) return byIdOrSlug.slug;
+
+    const byName = await this.prisma.city.findFirst({
+      where: {
+        name: { equals: key, mode: 'insensitive' },
+        status: 'ACTIVE',
+      },
+      orderBy: [{ population: 'desc' }],
+      select: { slug: true },
+    });
+    return byName?.slug ?? key;
   }
 }

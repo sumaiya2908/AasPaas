@@ -78,7 +78,7 @@ export default function BuildJourneyScreen() {
           style: prefs.style,
           food: prefs.food,
         }),
-      { cityName: city.name, savedExperiences: savedHere }
+      { cityName: city.name, citySlug: city.slug || city.id, savedExperiences: savedHere }
     );
 
     const saved = saveJourney({

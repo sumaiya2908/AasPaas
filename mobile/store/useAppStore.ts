@@ -4,6 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { City } from '@/data/cities';
 import { createCityShell, findCityByName, slugifyCity } from '@/data/cities';
 import * as api from '@/services/aaspaasApi';
+import { clearAccessToken, saveAccessToken } from '@/services/secureSession';
 
 export type JourneyStop = {
   time: string;
@@ -193,7 +194,8 @@ export const useAppStore = create<AppState>()(
         get().upsertCustomCity(city);
         return city;
       },
-      continueAsGuest: () =>
+      continueAsGuest: () => {
+        void clearAccessToken();
         set({
           isGuest: true,
           user: null,
@@ -202,8 +204,10 @@ export const useAppStore = create<AppState>()(
           selectedCityId: null,
           hasOnboarded: false,
           guestNudgeDismissed: false,
-        }),
-      exitToSignIn: () =>
+        });
+      },
+      exitToSignIn: () => {
+        void clearAccessToken();
         set({
           isGuest: false,
           user: null,
@@ -212,8 +216,10 @@ export const useAppStore = create<AppState>()(
           hasOnboarded: false,
           selectedCityId: null,
           guestNudgeDismissed: false,
-        }),
-      applyAuthSession: ({ accessToken, user, profile }) =>
+        });
+      },
+      applyAuthSession: ({ accessToken, user, profile }) => {
+        void saveAccessToken(accessToken);
         set({
           accessToken,
           user,
@@ -224,7 +230,8 @@ export const useAppStore = create<AppState>()(
           selectedCityId:
             get().selectedCityId ??
             (profile?.homeCityId || null),
-        }),
+        });
+      },
       signUpDemo: ({ name, email, provider = 'email' }) =>
         set({
           accessToken: null,
@@ -256,7 +263,8 @@ export const useAppStore = create<AppState>()(
           profile: sameUser ? get().profile : null,
         });
       },
-      signOut: () =>
+      signOut: () => {
+        void clearAccessToken();
         set({
           accessToken: null,
           user: null,
@@ -265,7 +273,8 @@ export const useAppStore = create<AppState>()(
           hasOnboarded: false,
           selectedCityId: null,
           guestNudgeDismissed: false,
-        }),
+        });
+      },
       saveProfile: (input) => {
         const homeCity = input.homeCity?.trim() || input.homeCityId;
         const homeCityId = input.homeCityId || slugifyCity(homeCity);
@@ -398,10 +407,9 @@ export const useAppStore = create<AppState>()(
         set({ savedJourneys: get().savedJourneys.filter((j) => j.id !== id) }),
     }),
     {
-      name: 'aaspaas-session-v5',
+      name: 'aaspaas-session-v6',
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (s) => ({
-        accessToken: s.accessToken,
         user: s.user,
         profile: s.profile,
         hasOnboarded: s.hasOnboarded,

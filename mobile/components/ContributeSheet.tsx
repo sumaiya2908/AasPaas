@@ -13,12 +13,12 @@ type Props = {
 const ACTIONS: { id: ContributeAction; title: string; sub: string }[] = [
   {
     id: 'experience',
-    title: 'Share a moment',
+    title: 'Share an experience',
     sub: 'A memory, feeling, or place that made the city feel alive',
   },
   {
     id: 'ask',
-    title: 'Ask locals',
+    title: 'Ask a local',
     sub: 'Where do people go after a hard day? What’s worth feeling?',
   },
   {

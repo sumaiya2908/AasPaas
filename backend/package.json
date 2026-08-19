@@ -27,7 +27,11 @@
     "db:up": "docker compose -f ../docker-compose.yml up -d postgres",
     "db:down": "docker compose -f ../docker-compose.yml down",
     "db:setup": "prisma generate && prisma db push && ts-node prisma/sql/ensure-pgvector.ts && ts-node prisma/seed.ts",
-    "rag:seed": "curl -s -X POST http://localhost:3001/api/rag/seed"
+    "rag:seed": "curl -s -X POST -H \"x-rag-admin-key: ${RAG_ADMIN_KEY:-dev-local-change-me}\" http://localhost:3001/api/rag/seed",
+    "rag:reindex": "curl -s -X POST -H \"x-rag-admin-key: ${RAG_ADMIN_KEY:-dev-local-change-me}\" http://localhost:3001/api/rag/reindex",
+    "rag:eval": "ts-node scripts/rag-eval.ts",
+    "sim:up": "ts-node scripts/sim-up.ts",
+    "sim:down": "ts-node scripts/sim-down.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
@@ -35,11 +39,13 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/throttler": "^6.5.0",
     "@prisma/client": "^5.22.0",
     "bcryptjs": "^3.0.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "dotenv": "^17.4.2",
+    "helmet": "^8.3.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "reflect-metadata": "^0.2.2",
