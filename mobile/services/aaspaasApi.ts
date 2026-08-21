@@ -18,6 +18,7 @@ export type ApiProfile = {
 
 export type AuthResponse = {
   accessToken: string;
+  refreshToken?: string;
   user: ApiUser;
   profile: ApiProfile | null;
 };
@@ -77,6 +78,34 @@ export function oauthLogin(input: {
   name?: string;
 }) {
   return apiRequest<AuthResponse>('/auth/oauth', { method: 'POST', body: input });
+}
+
+export function exchangeOAuthCode(code: string) {
+  return apiRequest<AuthResponse>('/auth/exchange', {
+    method: 'POST',
+    body: { code },
+  });
+}
+
+export function refreshSession(refreshToken: string) {
+  return apiRequest<AuthResponse>('/auth/refresh', {
+    method: 'POST',
+    body: { refreshToken },
+  });
+}
+
+export function logoutSession(refreshToken: string) {
+  return apiRequest<{ ok: boolean }>('/auth/logout', {
+    method: 'POST',
+    body: { refreshToken },
+  });
+}
+
+export function deleteAccount(token: string) {
+  return apiRequest<{ ok: boolean }>('/users/me', {
+    method: 'DELETE',
+    token,
+  });
 }
 
 export function fetchMe(token: string) {

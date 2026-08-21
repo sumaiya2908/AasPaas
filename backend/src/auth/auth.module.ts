@@ -16,13 +16,15 @@ if (!jwtSecret) {
   throw new Error('JWT_SECRET is required');
 }
 
+const accessExpiresIn = process.env.JWT_ACCESS_EXPIRES_IN || '7d';
+
 @Module({
   imports: [
     UsersModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({
       secret: jwtSecret,
-      signOptions: { expiresIn: '30d' },
+      signOptions: { expiresIn: accessExpiresIn as `${number}d` | `${number}h` },
     }),
   ],
   controllers: [AuthController],

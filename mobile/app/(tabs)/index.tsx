@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Animated,
+  Linking,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -11,6 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { Ionicons } from '@expo/vector-icons';
 import { GhostButton, PrimaryButton, Screen } from '@/components/ui';
 import { CitySearchSheet } from '@/components/CitySearchSheet';
 import { DayDashboard } from '@/components/DayDashboard';
@@ -81,6 +84,9 @@ export default function ExploreHomeScreen() {
     'undetermined',
   );
   const [showLocPrompt, setShowLocPrompt] = useState(false);
+  // Detected city name from reverse-geocode / nearby API (e.g. "Jaipur")
+  const [locCityName, setLocCityName] = useState<string | null>(null);
+  const [locLoading, setLocLoading] = useState(true);
 
   const fadeIn = useRef(new Animated.Value(0)).current;
   const rise = useRef(new Animated.Value(12)).current;
@@ -231,36 +237,75 @@ export default function ExploreHomeScreen() {
     ],
   );
 
+  const openAppSettings = () => {
+    if (Platform.OS === 'android') {
+      void Linking.openSettings();
+    } else {
+      void Linking.openURL('app-settings:');
+    }
+  };
+
+  // Resolve the location label from feed result or profile fallback
+  const resolveLocLabel = (
+    feed: import('@/services/aaspaasApi').ApiHomeFeed,
+    status: 'granted' | 'denied' | 'undetermined',
+    homeCityName?: string | null,
+  ) => {
+    if (status === 'granted' && feed.dayDigest?.source === 'nearby' && feed.dayDigest.city) {
+      return feed.dayDigest.city.name;
+    }
+    if (homeCityName) return homeCityName;
+    if (feed.dayDigest?.city) return feed.dayDigest.city.name;
+    return null;
+  };
+
+  // Run once on mount — check location permission and load dashboard.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      setLocLoading(true);
       const status = await getLocationPermissionStatus();
       if (cancelled) return;
       setLocStatus(status);
+      let coords = null;
       if (status === 'granted') {
-        const coords = await readApproximateLocation();
-        if (cancelled) return;
-        await loadDashboard(coords);
-      } else {
-        await loadDashboard(null);
-        if (status === 'undetermined' && !locationPromptDismissed) {
-          setTimeout(() => {
-            if (!cancelled) setShowLocPrompt(true);
-          }, 900);
-        }
+        coords = await readApproximateLocation();
+      }
+      if (cancelled) return;
+      await loadDashboard(coords);
+      if (cancelled) return;
+      // Resolve location label from what the feed returned
+      setLocLoading(false);
+      if (status === 'undetermined' && !locationPromptDismissed) {
+        setTimeout(() => {
+          if (!cancelled) setShowLocPrompt(true);
+        }, 600);
       }
     })();
-    return () => {
-      cancelled = true;
-    };
-  }, [locationPromptDismissed, loadDashboard]);
+    return () => { cancelled = true; };
+  }, []);
 
-  const onShowNearby = async () => {
+  // After dashboard loads, derive the city label
+  useEffect(() => {
+    if (loading) return;
+    const label = resolveLocLabel(
+      { dayDigest, discoverCities: trending, nearby: { city: null, distanceKm: null, today: null }, generatedAt: '' },
+      locStatus,
+      profile?.homeCity || profile?.homeCityId || null,
+    );
+    setLocCityName(label);
+    setLocLoading(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, dayDigest, locStatus]);
+
+  const onDetectLocation = async () => {
+    setLocLoading(true);
     setShowLocPrompt(false);
     dismissLocationPrompt();
     const coords = await requestApproximateLocation();
-    const status = await getLocationPermissionStatus();
-    setLocStatus(status);
+    const newStatus = await getLocationPermissionStatus();
+    setLocStatus(newStatus);
     await loadDashboard(coords);
   };
 
@@ -268,6 +313,9 @@ export default function ExploreHomeScreen() {
     setShowLocPrompt(false);
     dismissLocationPrompt();
   };
+
+  // Legacy alias used inside jsx
+  const onShowNearby = onDetectLocation;
 
   const openCity = (city: ApiCity) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -326,6 +374,19 @@ export default function ExploreHomeScreen() {
       ? continueCity.today.slice(0, 3)
       : [];
 
+  // Compute why the digest city is showing when it's not nearby
+  const digestFallbackLabel = useMemo(() => {
+    if (!dayDigest || dayDigest.source === 'nearby') return null;
+    const digestCityId = dayDigest.city.id;
+    if (profile?.homeCityId && digestCityId === profile.homeCityId) {
+      return `Home · ${dayDigest.city.name}`;
+    }
+    if (recentCities.some((r) => r.id === digestCityId || r.slug === digestCityId)) {
+      return `Recently explored`;
+    }
+    return 'Featured city';
+  }, [dayDigest, profile?.homeCityId, recentCities]);
+
   const goShareDigest = () => {
     if (!dayDigest) return;
     setSelectedCityId(dayDigest.city.id);
@@ -342,15 +403,50 @@ export default function ExploreHomeScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
+        {/* ── Swiggy/Zomato-style location header ── */}
         <View style={styles.topBar}>
-          <View style={{ flex: 1, paddingRight: 12 }}>
-            <Text style={styles.greeting}>{greeting}</Text>
-            <Text style={styles.hero}>Where should we take you?</Text>
-          </View>
-          <Pressable onPress={() => router.push('/notifications')} hitSlop={10}>
-            <Text style={styles.alerts}>Alerts</Text>
+          {/* Left: location selector */}
+          <Pressable
+            style={styles.locBar}
+            onPress={locStatus === 'denied' ? openAppSettings : locStatus === 'granted' ? undefined : onDetectLocation}
+            accessibilityRole="button"
+            accessibilityLabel="Location"
+          >
+            <View style={styles.locBarLeft}>
+              <Ionicons
+                name={locStatus === 'granted' ? 'navigate' : 'navigate-outline'}
+                size={16}
+                color={locStatus === 'granted' ? colors.primary : colors.accent}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.locBarLabel}>
+                  {locStatus === 'granted' ? 'Near you' : locStatus === 'denied' ? 'Location off' : 'Set location'}
+                </Text>
+                {locLoading ? (
+                  <Text style={styles.locBarCity} numberOfLines={1}>Detecting…</Text>
+                ) : locCityName ? (
+                  <Text style={styles.locBarCity} numberOfLines={1}>{locCityName}</Text>
+                ) : locStatus === 'denied' ? (
+                  <Text style={[styles.locBarCity, styles.locBarDenied]} numberOfLines={1}>
+                    Tap to enable in Settings
+                  </Text>
+                ) : (
+                  <Text style={[styles.locBarCity, styles.locBarCta]} numberOfLines={1}>
+                    Detect my location
+                  </Text>
+                )}
+              </View>
+              <Ionicons name="chevron-down" size={14} color={colors.textDim} />
+            </View>
+          </Pressable>
+
+          {/* Right: alerts */}
+          <Pressable onPress={() => router.push('/notifications')} hitSlop={10} style={styles.alertsBtn}>
+            <Ionicons name="notifications-outline" size={22} color={colors.textMuted} />
           </Pressable>
         </View>
+
+        <Text style={styles.greeting}>{greeting}</Text>
 
         <Pressable
           onPress={() => setSearchOpen(true)}
@@ -358,19 +454,20 @@ export default function ExploreHomeScreen() {
           accessibilityRole="search"
           accessibilityLabel="Search a city or place"
         >
-          <Text style={styles.searchIcon}>⌕</Text>
-          <Text style={styles.searchPlaceholder}>Search a city or place...</Text>
+          <Ionicons name="search-outline" size={16} color={colors.textDim} />
+          <Text style={styles.searchPlaceholder}>Search a city or place…</Text>
         </Pressable>
 
-        {showLocPrompt ? (
+{/* Location prompt only shown first time for undetermined — top bar handles denied/granted */}
+        {showLocPrompt && locStatus === 'undetermined' ? (
           <View style={styles.locPrompt}>
-            <Text style={styles.locTitle}>Want what’s happening around you?</Text>
+            <Text style={styles.locTitle}>What’s near you?</Text>
             <Text style={styles.locBody}>
-              Approximate location unlocks nearby city updates — not a map.
+              Share approximate location to see what’s happening in the nearest city.
             </Text>
-            <PrimaryButton label="Show me nearby" onPress={onShowNearby} />
+            <PrimaryButton label="Detect my location" onPress={onDetectLocation} />
             <GhostButton
-              label="Maybe later"
+              label="Not now"
               onPress={onMaybeLater}
               style={{ marginTop: spacing.sm }}
             />
@@ -443,6 +540,7 @@ export default function ExploreHomeScreen() {
                 digest={dayDigest}
                 onOpenCity={() => openCity(dayDigest.city)}
                 onShare={goShareDigest}
+                fallbackLabel={digestFallbackLabel}
               />
             ) : locStatus !== 'granted' && !showLocPrompt ? (
               <View style={styles.digestEmpty}>
@@ -453,10 +551,16 @@ export default function ExploreHomeScreen() {
                 <Text style={styles.digestEmptyBody}>
                   Search a city, or turn on approximate location to see today’s updates the moment you open AASPAAS.
                 </Text>
-                {locStatus === 'denied' || locationPromptDismissed ? (
+                {locStatus === 'denied' ? (
                   <GhostButton
-                    label="Use approximate location"
-                    onPress={onShowNearby}
+                    label="Enable location in Settings"
+                    onPress={openAppSettings}
+                    style={{ marginTop: spacing.md }}
+                  />
+                ) : locStatus === 'undetermined' ? (
+                  <GhostButton
+                    label="Detect my location"
+                    onPress={onDetectLocation}
                     style={{ marginTop: spacing.md }}
                   />
                 ) : null}
@@ -584,31 +688,56 @@ const styles = StyleSheet.create({
   },
   topBar: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
   },
-  greeting: {
+  locBar: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  locBarLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  locBarLabel: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+    color: colors.textDim,
+  },
+  locBarCity: {
+    fontFamily: fonts.serifBold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: colors.text,
+    marginTop: 1,
+  },
+  locBarDenied: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.accent,
+    letterSpacing: 0,
+  },
+  locBarCta: {
     fontFamily: fonts.bodyMedium,
     fontSize: 15,
-    color: colors.textMuted,
+    color: colors.primary,
+    letterSpacing: 0,
   },
-  hero: {
-    marginTop: 4,
-    fontFamily: fonts.serifBold,
-    fontSize: 28,
-    lineHeight: 34,
-    letterSpacing: -0.6,
-    color: colors.text,
+  alertsBtn: {
+    padding: 4,
   },
-  alerts: {
-    marginTop: 4,
-    fontFamily: fonts.bodyMedium,
-    fontSize: 14,
+  greeting: {
+    fontFamily: fonts.body,
+    fontSize: 15,
     color: colors.textMuted,
+    marginBottom: spacing.sm,
   },
   searchHit: {
-    marginTop: spacing.lg,
-    minHeight: 54,
+    minHeight: 52,
     borderRadius: radii.lg,
     backgroundColor: colors.bgElevated,
     borderWidth: StyleSheet.hairlineWidth,
@@ -618,17 +747,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  searchIcon: {
-    fontSize: 18,
-    color: colors.primary,
-  },
   searchPlaceholder: {
     fontFamily: fonts.body,
-    fontSize: 16,
+    fontSize: 15,
     color: colors.textDim,
+    flex: 1,
   },
   locPrompt: {
-    marginTop: spacing.xl,
+    marginTop: spacing.lg,
     padding: spacing.lg,
     borderRadius: radii.lg,
     backgroundColor: colors.cream,

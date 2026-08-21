@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { City } from '@/data/cities';
 import { createCityShell, findCityByName, slugifyCity } from '@/data/cities';
 import * as api from '@/services/aaspaasApi';
-import { clearAccessToken, saveAccessToken } from '@/services/secureSession';
+import { clearAccessToken, clearSessionTokens, saveAccessToken } from '@/services/secureSession';
 
 export type JourneyStop = {
   time: string;
@@ -150,6 +150,11 @@ function mapApiProfile(p: api.ApiProfile | null): UserProfile | null {
   };
 }
 
+/** Shared mapper for session bootstrap and auth responses. */
+export function mapApiProfileFromStore(p: api.ApiProfile | null): UserProfile | null {
+  return mapApiProfile(p);
+}
+
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
@@ -195,7 +200,7 @@ export const useAppStore = create<AppState>()(
         return city;
       },
       continueAsGuest: () => {
-        void clearAccessToken();
+        void clearSessionTokens();
         set({
           isGuest: true,
           user: null,
@@ -207,7 +212,7 @@ export const useAppStore = create<AppState>()(
         });
       },
       exitToSignIn: () => {
-        void clearAccessToken();
+        void clearSessionTokens();
         set({
           isGuest: false,
           user: null,
@@ -264,7 +269,7 @@ export const useAppStore = create<AppState>()(
         });
       },
       signOut: () => {
-        void clearAccessToken();
+        void clearSessionTokens();
         set({
           accessToken: null,
           user: null,
@@ -424,8 +429,8 @@ export const useAppStore = create<AppState>()(
         savedJourneys: s.savedJourneys,
         questions: s.questions,
       }),
-      onRehydrateStorage: () => (state) => {
-        state?.setHasHydrated(true);
+      onRehydrateStorage: () => () => {
+        /* Gate runs bootstrapSession before marking hydrated */
       },
     }
   )
@@ -521,33 +526,15 @@ export async function registerWithApi(input: {
   password: string;
 }) {
   const res = await api.register(input);
-  useAppStore.getState().applyAuthSession({
-    accessToken: res.accessToken,
-    user: {
-      id: res.user.id,
-      name: res.user.name,
-      email: res.user.email,
-      provider: 'email',
-    },
-    profile: mapApiProfile(res.profile),
-  });
-  await syncSavesWithApi();
+  const { applyAuthResponse } = await import('@/services/sessionBootstrap');
+  await applyAuthResponse(res);
   return res;
 }
 
 export async function loginWithApi(input: { email: string; password: string }) {
   const res = await api.login(input);
-  useAppStore.getState().applyAuthSession({
-    accessToken: res.accessToken,
-    user: {
-      id: res.user.id,
-      name: res.user.name,
-      email: res.user.email,
-      provider: 'email',
-    },
-    profile: mapApiProfile(res.profile),
-  });
-  await syncSavesWithApi();
+  const { applyAuthResponse } = await import('@/services/sessionBootstrap');
+  await applyAuthResponse(res);
   return res;
 }
 
@@ -558,23 +545,10 @@ export async function oauthWithApi(input: {
   name?: string;
 }) {
   const res = await api.oauthLogin(input);
-  const provider =
-    res.user.provider === 'google' || res.user.provider === 'apple'
-      ? res.user.provider
-      : input.provider;
-  useAppStore.getState().applyAuthSession({
-    accessToken: res.accessToken,
-    user: {
-      id: res.user.id,
-      name: res.user.name,
-      email: res.user.email,
-      provider,
-    },
-    profile: mapApiProfile(res.profile),
-  });
-  await syncSavesWithApi();
+  const { applyAuthResponse } = await import('@/services/sessionBootstrap');
+  await applyAuthResponse(res);
   const cityId = useAppStore.getState().selectedCityId;
-  if (cityId) {
+  if (cityId && res.accessToken) {
     void api.setNotificationCity(res.accessToken, cityId).catch(() => undefined);
   }
   return res;
@@ -601,7 +575,10 @@ export async function saveProfileWithApi(
         id: res.user.id,
         name: res.user.name,
         email: res.user.email,
-        provider: 'email',
+        provider:
+          res.user.provider === 'google' || res.user.provider === 'apple'
+            ? res.user.provider
+            : useAppStore.getState().user?.provider || 'email',
       },
       profile: mapApiProfile(res.profile),
     });

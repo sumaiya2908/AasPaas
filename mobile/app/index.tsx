@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { colors } from '@/constants/theme';
-import { loadAccessToken } from '@/services/secureSession';
+import { bootstrapSession } from '@/services/sessionBootstrap';
 import { useAppStore } from '@/store/useAppStore';
 
 /**
@@ -18,36 +18,36 @@ export default function Gate() {
   const setHasHydrated = useAppStore((s) => s.setHasHydrated);
 
   useEffect(() => {
+    // Reset so the routing effect waits for bootstrap to finish.
+    setHasHydrated(false);
     let cancelled = false;
-    const finish = async () => {
-      const token = await loadAccessToken();
-      if (cancelled) return;
-      if (token) {
-        useAppStore.setState({ accessToken: token });
-      }
-      setHasHydrated(true);
+
+    const run = async () => {
+      await bootstrapSession();
+      if (!cancelled) setHasHydrated(true);
     };
 
-    const unsub = useAppStore.persist.onFinishHydration(() => {
-      void finish();
-    });
     if (useAppStore.persist.hasHydrated()) {
-      void finish();
+      void run();
     } else {
+      const unsub = useAppStore.persist.onFinishHydration(() => {
+        void run();
+      });
       const fallback = setTimeout(() => {
-        void finish();
-      }, 1500);
+        void run();
+      }, 2000);
       return () => {
         cancelled = true;
         unsub();
         clearTimeout(fallback);
       };
     }
+
     return () => {
       cancelled = true;
-      unsub();
     };
-  }, [setHasHydrated]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (!hydrated) return;

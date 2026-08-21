@@ -19,7 +19,6 @@ function resolveApiBaseUrl() {
   const lanHost = typeof hostUri === 'string' ? hostUri.split(':')[0] : null;
 
   if (Platform.OS === 'android') {
-    // Emulator special case; physical Android still needs LAN IP
     if (lanHost && lanHost !== 'localhost' && lanHost !== '127.0.0.1') {
       return `http://${lanHost}:3001/api`;
     }
@@ -47,7 +46,22 @@ type RequestOptions = {
   method?: string;
   body?: unknown;
   token?: string | null;
+  /** Internal — prevents infinite refresh retry loops */
+  _retried?: boolean;
 };
+
+let unauthorizedHandler: (() => void) | null = null;
+let refreshHandler: (() => Promise<string | null>) | null = null;
+
+/** Register handler for expired/invalid JWT (401 on authenticated requests). */
+export function onUnauthorized(handler: () => void) {
+  unauthorizedHandler = handler;
+}
+
+/** Try refresh before signing out on 401. Returns new access token or null. */
+export function onRefreshAttempt(handler: () => Promise<string | null>) {
+  refreshHandler = handler;
+}
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const headers: Record<string, string> = {
@@ -73,6 +87,25 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   }
 
   if (!res.ok) {
+    if (
+      res.status === 401 &&
+      options.token &&
+      refreshHandler &&
+      !options._retried &&
+      !path.startsWith('/auth/refresh')
+    ) {
+      const newToken = await refreshHandler();
+      if (newToken) {
+        return apiRequest<T>(path, {
+          ...options,
+          token: newToken,
+          _retried: true,
+        });
+      }
+    }
+    if (res.status === 401 && options.token) {
+      unauthorizedHandler?.();
+    }
     const msg =
       (data as { message?: string | string[] })?.message ||
       `Request failed (${res.status})`;

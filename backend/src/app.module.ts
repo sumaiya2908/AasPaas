@@ -19,6 +19,11 @@ import { HealthController } from './health.controller';
         ttl: 60_000,
         limit: Number(process.env.RATE_LIMIT_PER_MIN || 120),
       },
+      {
+        name: 'auth',
+        ttl: 60_000,
+        limit: Number(process.env.AUTH_RATE_LIMIT_PER_MIN || 15),
+      },
     ]),
     PrismaModule,
     AuthModule,

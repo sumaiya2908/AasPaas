@@ -8,6 +8,8 @@ type Props = {
   digest: ApiDayDigest;
   onOpenCity: () => void;
   onShare: () => void;
+  /** Human-readable fallback reason when location is not the source */
+  fallbackLabel?: string | null;
 };
 
 function Metric({
@@ -57,7 +59,7 @@ function Metric({
  * Day dashboard — carefully composed daily snapshot for one city.
  * Real counts only; empty states stay quiet, never fabricated.
  */
-export function DayDashboard({ digest, onOpenCity, onShare }: Props) {
+export function DayDashboard({ digest, onOpenCity, onShare, fallbackLabel }: Props) {
   const lead = digest.updates[0] ?? null;
   const rest = digest.updates.slice(1, 3);
   const distance =
@@ -65,10 +67,9 @@ export function DayDashboard({ digest, onOpenCity, onShare }: Props) {
       ? `~${Math.max(1, Math.round(digest.distanceKm))} km`
       : null;
 
-  const contextBits = [
-    digest.source === 'nearby' ? 'Near you' : null,
-    distance,
-  ].filter(Boolean);
+  // Badge logic — priority: nearby > fallback label > quiet "Your day"
+  const isNearby = digest.source === 'nearby';
+  const nearbyBits = [distance].filter(Boolean);
 
   return (
     <View style={styles.shell}>
@@ -80,10 +81,17 @@ export function DayDashboard({ digest, onOpenCity, onShare }: Props) {
             <Text style={styles.city}>{digest.city.name}</Text>
           </Pressable>
         </View>
-        {contextBits.length > 0 ? (
+        {isNearby ? (
           <View style={styles.badge}>
-            <Ionicons name="navigate-outline" size={12} color={colors.primary} />
-            <Text style={styles.badgeText}>{contextBits.join(' · ')}</Text>
+            <Ionicons name="navigate" size={12} color={colors.primary} />
+            <Text style={styles.badgeText}>
+              Near you{nearbyBits.length > 0 ? ` · ${nearbyBits.join(' · ')}` : ''}
+            </Text>
+          </View>
+        ) : fallbackLabel ? (
+          <View style={styles.badgeFallback}>
+            <Ionicons name="location-outline" size={12} color={colors.textMuted} />
+            <Text style={styles.badgeFallbackText}>{fallbackLabel}</Text>
           </View>
         ) : (
           <View style={styles.badgeQuiet}>
@@ -283,6 +291,23 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodyMedium,
     fontSize: 11,
     color: colors.primary,
+  },
+  badgeFallback: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: radii.pill,
+    backgroundColor: colors.bgSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+  },
+  badgeFallbackText: {
+    fontFamily: fonts.bodyMedium,
+    fontSize: 11,
+    color: colors.textMuted,
   },
   badgeQuiet: {
     marginTop: 4,

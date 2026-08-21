@@ -8,15 +8,27 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
+import { SkipThrottle, Throttle } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { OAuthDto } from './dto/oauth.dto';
+import { RefreshDto } from './dto/refresh.dto';
+import { ExchangeDto } from './dto/exchange.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
 
+const authThrottle = {
+  auth: {
+    limit: Number(process.env.AUTH_RATE_LIMIT_PER_MIN || 15),
+    ttl: 60_000,
+  },
+};
+
 @Controller('auth')
+@SkipThrottle({ default: true })
+@Throttle(authThrottle)
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
@@ -33,6 +45,21 @@ export class AuthController {
   @Post('oauth')
   oauth(@Body() dto: OAuthDto) {
     return this.auth.oauth(dto);
+  }
+
+  @Post('exchange')
+  exchange(@Body() dto: ExchangeDto) {
+    return this.auth.exchangeOAuthCode(dto.code);
+  }
+
+  @Post('refresh')
+  refresh(@Body() dto: RefreshDto) {
+    return this.auth.refreshSession(dto.refreshToken);
+  }
+
+  @Post('logout')
+  logout(@Body() dto: RefreshDto) {
+    return this.auth.logout(dto.refreshToken);
   }
 
   /**

@@ -5,11 +5,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GhostButton, PrimaryButton, Screen, Title } from '@/components/ui';
 import { getCity } from '@/data/cities';
 import { colors, fonts, radii, spacing } from '@/constants/theme';
-import { useAppStore } from '@/store/useAppStore';
+import { useSignOut } from '@/hooks/useSignOut';
+import { useDeleteAccount } from '@/hooks/useDeleteAccount';
+import { isSignedIn, useAppStore } from '@/store/useAppStore';
 
 export default function SavedTab() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const signOut = useSignOut();
+  const deleteAccount = useDeleteAccount();
+  const user = useAppStore((s) => s.user);
+  const signedIn = useAppStore(isSignedIn);
   const customCities = useAppStore((s) => s.customCities);
   const savedCities = useAppStore((s) => s.savedCities);
   const savedExperiences = useAppStore((s) => s.savedExperiences);
@@ -159,6 +165,25 @@ export default function SavedTab() {
             style={{ marginTop: spacing.xl }}
           />
         ) : null}
+
+        {signedIn && user ? (
+          <View style={styles.account}>
+            <Text style={styles.section}>Account</Text>
+            <View style={styles.accountCard}>
+              <Text style={styles.accountName}>{user.name}</Text>
+              <Text style={styles.accountEmail}>{user.email}</Text>
+              <Text style={styles.accountProvider}>
+                Signed in with {user.provider === 'email' ? 'email' : user.provider}
+              </Text>
+            </View>
+            <GhostButton label="Sign out" onPress={signOut} style={{ marginTop: spacing.sm }} />
+            <GhostButton
+              label="Delete account"
+              onPress={deleteAccount}
+              style={{ marginTop: 4 }}
+            />
+          </View>
+        ) : null}
       </ScrollView>
     </Screen>
   );
@@ -278,5 +303,37 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
     color: colors.textMuted,
+  },
+  account: {
+    marginTop: spacing.xl * 2,
+    paddingTop: spacing.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.hairline,
+  },
+  accountCard: {
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    backgroundColor: colors.bgElevated,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
+  },
+  accountName: {
+    fontFamily: fonts.bodyBold,
+    fontSize: 16,
+    color: colors.text,
+  },
+  accountEmail: {
+    marginTop: 4,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textMuted,
+  },
+  accountProvider: {
+    marginTop: 8,
+    fontFamily: fonts.bodyMedium,
+    fontSize: 12,
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    color: colors.textDim,
   },
 });

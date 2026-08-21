@@ -5,18 +5,31 @@
 | Area | Status | Notes |
 |------|--------|-------|
 | JWT storage | ✅ SecureStore | Keychain / Keystore via `expo-secure-store` — not AsyncStorage |
+| Session persistence | ✅ | User + profile in AsyncStorage; JWT in SecureStore — **closing the app does not log you out** |
+| Cold-start validation | ✅ | `bootstrapSession()` calls `/auth/me` before routing |
+| 401 handling | ✅ | Invalid/expired JWT clears session and returns to Welcome |
 | Token migration | ✅ | Legacy v5 AsyncStorage token moved once, then cleared |
-| Logout wipe | ✅ | `clearAccessToken()` on sign-out / exit-to-sign-in |
+| Logout wipe | ✅ | `clearSessionTokens()` on sign-out / exit-to-sign-in |
+| Sign out UI | ✅ | Saved tab → Account section |
 | HTTPS API | ⚠️ | Set `EXPO_PUBLIC_API_URL=https://…` in production builds |
 | Dev SSO | ⚠️ | `EXPO_PUBLIC_AUTH_DEV_SSO` must be **false** in release |
-| OAuth in URL | ⚠️ | Google flow still passes JWT in deep-link `payload` — migrate to one-time code before wide release |
-| Account deletion | ❌ | Required for App Store — add API + UI |
+| OAuth in URL | ✅ | One-time `code` → `POST /auth/exchange` (legacy `payload` fallback in app) |
+| Refresh tokens | ✅ | Rotating refresh tokens in SecureStore; auto-refresh on 401 |
+| Account deletion | ✅ | `DELETE /users/me` + Saved tab UI |
 | Biometric lock | ❌ | Optional future |
 
-## Backend API
+## Backend API — Auth
 
 | Area | Status | Notes |
 |------|--------|-------|
+| Email register/login | ✅ | bcrypt, validation, conflict handling |
+| Google SSO | ✅ | Server-side code exchange + tokeninfo verification |
+| Apple SSO | ⚠️ | Issuer/aud/exp checked; full JWKS signature verify recommended for prod |
+| Auth rate limit | ✅ | 15 req/min per IP on `/auth/*` (`AUTH_RATE_LIMIT_PER_MIN`) |
+| OAuth redirect allowlist | ✅ | `aaspaas://`, dev `exp://127.0.0.1`, optional `OAUTH_APP_REDIRECT_ALLOWLIST` |
+| OAuth exchange | ✅ | `POST /auth/exchange` — 2 min one-time code, no JWT in deep link |
+| Refresh tokens | ✅ | `POST /auth/refresh`, `POST /auth/logout`; 90-day rotation |
+| Account deletion | ✅ | `DELETE /users/me` — cascades profile, saves, posts, tokens |
 | JWT secret | ✅ prod guard | Boot fails if weak/missing in `NODE_ENV=production` |
 | AUTH_DEV_SSO | ✅ prod guard | Must be `false` in production |
 | Helmet | ✅ | HTTP security headers |
@@ -48,6 +61,8 @@
 ```bash
 NODE_ENV=production
 JWT_SECRET=<32+ random chars>
+JWT_ACCESS_EXPIRES_IN=7d
+JWT_REFRESH_DAYS=90
 AUTH_DEV_SSO=false
 RAG_ADMIN_KEY=<random>
 CORS_ORIGINS=https://api.yourdomain.com

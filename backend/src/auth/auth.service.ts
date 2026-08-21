@@ -6,9 +6,10 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'crypto';
+import { randomBytes, createHash } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { isProduction } from '../config/env';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { OAuthDto } from './dto/oauth.dto';
@@ -61,13 +62,15 @@ export class AuthService {
         'GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not configured on the API',
       );
     }
-    if (!appRedirect?.trim()) {
-      throw new BadRequestException('appRedirect is required');
-    }
+    const safeRedirect = this.validateAppRedirect(appRedirect);
 
+    // Use a stable OAUTH_STATE_SECRET if provided so hot-reloads don't
+    // invalidate in-flight OAuth state tokens (dev convenience + prod safety).
+    const stateSecret =
+      process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET || '';
     const state = this.jwt.sign(
-      { appRedirect: appRedirect.trim(), n: randomBytes(8).toString('hex') },
-      { expiresIn: '10m' },
+      { appRedirect: safeRedirect, n: randomBytes(8).toString('hex') },
+      { secret: stateSecret, expiresIn: '10m' },
     );
 
     const params = new URLSearchParams({
@@ -87,7 +90,11 @@ export class AuthService {
   async finishGoogleCode(code: string, state: string) {
     let appRedirect = '';
     try {
-      const payload = this.jwt.verify(state) as { appRedirect?: string };
+      const stateSecret =
+        process.env.OAUTH_STATE_SECRET || process.env.JWT_SECRET || '';
+      const payload = this.jwt.verify(state, { secret: stateSecret }) as {
+        appRedirect?: string;
+      };
       appRedirect = payload.appRedirect || '';
     } catch {
       throw new UnauthorizedException('Invalid OAuth state');
@@ -95,6 +102,7 @@ export class AuthService {
     if (!appRedirect) {
       throw new BadRequestException('Missing appRedirect in state');
     }
+    this.validateAppRedirect(appRedirect);
 
     const clientId = this.googleWebClientId();
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET || '';
@@ -118,16 +126,67 @@ export class AuthService {
       throw new UnauthorizedException('Google did not return an id_token');
     }
 
-    const auth = await this.oauth({
+    const user = await this.upsertOAuthUser({
       provider: 'google',
       idToken: tokens.id_token,
     });
-
-    const payload = Buffer.from(JSON.stringify(auth), 'utf8').toString(
-      'base64url',
-    );
+    const exchangeCode = await this.createOAuthExchangeCode(user.id);
     const join = appRedirect.includes('?') ? '&' : '?';
-    return `${appRedirect}${join}payload=${payload}`;
+    return `${appRedirect}${join}code=${encodeURIComponent(exchangeCode)}`;
+  }
+
+  /** Exchange one-time OAuth code (from Google deep link) for session tokens. */
+  async exchangeOAuthCode(code: string) {
+    const row = await this.prisma.oAuthExchangeCode.findUnique({
+      where: { code: code.trim() },
+      include: { user: { include: { profile: true } } },
+    });
+    if (!row || row.usedAt || row.expiresAt.getTime() < Date.now()) {
+      throw new UnauthorizedException('Invalid or expired OAuth code');
+    }
+    await this.prisma.oAuthExchangeCode.update({
+      where: { id: row.id },
+      data: { usedAt: new Date() },
+    });
+    return this.tokenResponse(row.user);
+  }
+
+  /** Rotate refresh token and issue a new access token. */
+  async refreshSession(refreshToken: string) {
+    const hash = this.hashToken(refreshToken);
+    const row = await this.prisma.refreshToken.findFirst({
+      where: {
+        tokenHash: hash,
+        revokedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      include: { user: { include: { profile: true } } },
+    });
+    if (!row) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+    await this.prisma.refreshToken.update({
+      where: { id: row.id },
+      data: { revokedAt: new Date() },
+    });
+    return this.tokenResponse(row.user);
+  }
+
+  /** Revoke a single refresh token (logout). */
+  async logout(refreshToken: string) {
+    const hash = this.hashToken(refreshToken);
+    await this.prisma.refreshToken.updateMany({
+      where: { tokenHash: hash, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  async revokeAllRefreshTokens(userId: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
   }
 
   async register(dto: RegisterDto) {
@@ -176,6 +235,11 @@ export class AuthService {
   }
 
   async oauth(dto: OAuthDto) {
+    const user = await this.upsertOAuthUser(dto);
+    return this.tokenResponse(user);
+  }
+
+  private async upsertOAuthUser(dto: OAuthDto): Promise<TokenUser> {
     const identity = await this.verifyOAuthToken(dto);
     const email = identity.email.trim().toLowerCase();
     if (!email.includes('@')) {
@@ -222,7 +286,7 @@ export class AuthService {
       });
     }
 
-    return this.tokenResponse(user);
+    return user;
   }
 
   async me(userId: string) {
@@ -307,9 +371,13 @@ export class AuthService {
         email?: string;
         iss?: string;
         aud?: string | string[];
+        exp?: number;
       };
       if (payload.iss !== 'https://appleid.apple.com' || !payload.sub) {
         throw new UnauthorizedException('Invalid Apple issuer');
+      }
+      if (payload.exp && payload.exp * 1000 < Date.now()) {
+        throw new UnauthorizedException('Apple token expired');
       }
       const aud = process.env.APPLE_CLIENT_ID;
       if (aud) {
@@ -333,10 +401,82 @@ export class AuthService {
     }
   }
 
-  private tokenResponse(user: TokenUser) {
+  /** Block open redirects when bouncing OAuth back into the mobile app. */
+  private validateAppRedirect(appRedirect: string): string {
+    const trimmed = appRedirect.trim();
+    if (!trimmed) {
+      throw new BadRequestException('appRedirect is required');
+    }
+
+    let parsed: URL;
+    try {
+      parsed = new URL(trimmed);
+    } catch {
+      throw new BadRequestException('Invalid appRedirect URL');
+    }
+
+    const scheme = parsed.protocol.replace(':', '');
+    if (scheme === 'aaspaas') {
+      return trimmed;
+    }
+
+    if (!isProduction() && scheme === 'exp') {
+      if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') {
+        return trimmed;
+      }
+    }
+
+    const extra = (process.env.OAUTH_APP_REDIRECT_ALLOWLIST || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const prefix of extra) {
+      if (trimmed.startsWith(prefix)) return trimmed;
+    }
+
+    throw new BadRequestException('appRedirect is not allowlisted');
+  }
+
+  private hashToken(raw: string): string {
+    return createHash('sha256').update(raw).digest('hex');
+  }
+
+  private refreshTtlDays(): number {
+    const raw = Number(process.env.JWT_REFRESH_DAYS || 90);
+    return Number.isFinite(raw) && raw > 0 ? raw : 90;
+  }
+
+  private async issueRefreshToken(userId: string): Promise<string> {
+    const raw = randomBytes(32).toString('base64url');
+    const expiresAt = new Date(
+      Date.now() + this.refreshTtlDays() * 24 * 60 * 60 * 1000,
+    );
+    await this.prisma.refreshToken.create({
+      data: {
+        userId,
+        tokenHash: this.hashToken(raw),
+        expiresAt,
+      },
+    });
+    return raw;
+  }
+
+  private async createOAuthExchangeCode(userId: string): Promise<string> {
+    const code = randomBytes(24).toString('base64url');
+    const ttlSec = Number(process.env.OAUTH_EXCHANGE_TTL_SEC || 120);
+    const expiresAt = new Date(Date.now() + Math.max(30, ttlSec) * 1000);
+    await this.prisma.oAuthExchangeCode.create({
+      data: { userId, code, expiresAt },
+    });
+    return code;
+  }
+
+  private async tokenResponse(user: TokenUser) {
     const accessToken = this.jwt.sign({ sub: user.id, email: user.email });
+    const refreshToken = await this.issueRefreshToken(user.id);
     return {
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         email: user.email,

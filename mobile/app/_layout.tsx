@@ -15,6 +15,11 @@ import { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import { colors } from '@/constants/theme';
+import { onUnauthorized } from '@/services/api';
+import {
+  handleUnauthorizedSession,
+  initSessionRefreshHandler,
+} from '@/services/sessionBootstrap';
 
 export { ErrorBoundary } from 'expo-router';
 
@@ -30,6 +35,11 @@ export default function RootLayout() {
     Literata_600SemiBold,
     Literata_700Bold,
   });
+
+  useEffect(() => {
+    initSessionRefreshHandler();
+    onUnauthorized(handleUnauthorizedSession);
+  }, []);
 
   useEffect(() => {
     if (error) {

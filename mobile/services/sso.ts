@@ -1,10 +1,22 @@
 import { Platform } from 'react-native';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import * as AuthSession from 'expo-auth-session';
+import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { ssoEnv } from '@/config/sso';
 import { API_BASE_URL } from '@/services/api';
-import { oauthWithApi, useAppStore, type UserProfile } from '@/store/useAppStore';
+import { applyAuthResponse } from '@/services/sessionBootstrap';
+import * as api from '@/services/aaspaasApi';
+import { oauthWithApi } from '@/store/useAppStore';
+
+/**
+ * Returns true when running inside Expo Go (not a standalone/dev-client build).
+ * Expo Go cannot intercept custom URL schemes, so the real WebBrowser OAuth
+ * flow won't work — fall back to dev SSO.
+ */
+function isExpoGo(): boolean {
+  return Constants.executionEnvironment === 'storeClient';
+}
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -18,8 +30,13 @@ export function getGoogleRedirectUri() {
   return GOOGLE_CONSOLE_REDIRECT_URIS[0];
 }
 
+/**
+ * True when the full WebBrowser-based Google OAuth flow can run.
+ * Requires a real web client ID AND a build that can intercept custom URL
+ * schemes (i.e. NOT Expo Go — use a dev-client or standalone build for real OAuth).
+ */
 export function canPromptGoogleAuth() {
-  return ssoEnv.googleEnabled && Boolean(ssoEnv.googleWebClientId);
+  return ssoEnv.googleEnabled && Boolean(ssoEnv.googleWebClientId) && !isExpoGo();
 }
 
 /**
@@ -53,49 +70,19 @@ export async function continueWithGoogle(nameHint?: string) {
   }
 
   const payloadB64 = extractQueryParam(result.url, 'payload');
-  if (!payloadB64) {
-    throw new Error('Google sign-in returned no session payload');
+  const exchangeCode = extractQueryParam(result.url, 'code');
+  if (exchangeCode) {
+    const json = await api.exchangeOAuthCode(exchangeCode);
+    await applyAuthResponse(json);
+    return json;
   }
-
-  const json = JSON.parse(base64UrlToUtf8(payloadB64)) as {
-    accessToken: string;
-    user: { id: string; email: string; name: string; provider: string };
-    profile: {
-      homeCityId: string | null;
-      homeCity: string | null;
-      interests: string[];
-      travelStyle: string | null;
-      aboutCity: string | null;
-      completed: boolean;
-    } | null;
-  };
-
-  const profile: UserProfile | null = json.profile
-    ? {
-        homeCityId: json.profile.homeCityId || 'home',
-        homeCity: json.profile.homeCity || '',
-        interests: json.profile.interests || [],
-        travelStyle: json.profile.travelStyle || '',
-        aboutCity: json.profile.aboutCity || '',
-        completed: Boolean(json.profile.completed),
-      }
-    : null;
-
-  useAppStore.getState().applyAuthSession({
-    accessToken: json.accessToken,
-    user: {
-      id: json.user.id,
-      name: json.user.name,
-      email: json.user.email,
-      provider:
-        json.user.provider === 'google' || json.user.provider === 'apple'
-          ? json.user.provider
-          : 'google',
-    },
-    profile,
-  });
-
-  return json;
+  if (payloadB64) {
+    // Legacy callback — remove after all testers are on latest build
+    const json = JSON.parse(base64UrlToUtf8(payloadB64)) as api.AuthResponse;
+    await applyAuthResponse(json);
+    return json;
+  }
+  throw new Error('Google sign-in returned no session');
 }
 
 export async function continueWithGoogleDev(nameHint?: string) {

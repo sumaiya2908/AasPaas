@@ -49,19 +49,16 @@ export default function AuthScreen() {
   const title = mode === 'signup' ? 'Create account' : 'Sign in';
   const canSubmit = useMemo(() => {
     const okEmail = email.includes('@') && email.includes('.');
-    const okPass = password.trim().length >= 6;
+    const minPass = mode === 'signup' ? 8 : 6;
+    const okPass = password.trim().length >= minPass;
     if (mode === 'signup') return name.trim().length > 1 && okEmail && okPass;
     return okEmail && okPass;
   }, [email, mode, name, password]);
 
   const afterAuth = async () => {
     void ensurePushRegistration();
-    const profile = useAppStore.getState().profile;
-    if (profile?.completed) {
-      router.replace('/(tabs)');
-    } else {
-      router.replace('/profile-setup');
-    }
+    // Let the index gate decide the destination based on current store state.
+    router.replace('/');
   };
 
   const finishAuth = async () => {
@@ -111,9 +108,7 @@ export default function AuthScreen() {
       await afterAuth();
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Google sign-in failed';
-      setError(
-        `${msg}\n\nAdd this redirect URI in Google Cloud (Web client):\n${getGoogleRedirectUri()}`,
-      );
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -212,7 +207,7 @@ export default function AuthScreen() {
           <TextInput
             value={password}
             onChangeText={setPassword}
-            placeholder={mode === 'signup' ? 'At least 6 characters' : 'Your password'}
+            placeholder={mode === 'signup' ? 'At least 8 characters' : 'Your password'}
             placeholderTextColor={colors.textDim}
             secureTextEntry
             style={styles.input}
