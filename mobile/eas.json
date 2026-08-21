@@ -14,13 +14,19 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_AUTH_DEV_SSO": "false"
+        "EXPO_PUBLIC_AUTH_DEV_SSO": "false",
+        "EXPO_PUBLIC_API_URL": "https://aaspaas-02tx.onrender.com/api",
+        "EXPO_PUBLIC_SSO_GOOGLE": "true",
+        "EXPO_PUBLIC_SSO_APPLE": "false"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_AUTH_DEV_SSO": "false"
+        "EXPO_PUBLIC_AUTH_DEV_SSO": "false",
+        "EXPO_PUBLIC_API_URL": "https://aaspaas-02tx.onrender.com/api",
+        "EXPO_PUBLIC_SSO_GOOGLE": "true",
+        "EXPO_PUBLIC_SSO_APPLE": "false"
       }
     }
   },
