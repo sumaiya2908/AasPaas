@@ -17,7 +17,8 @@
         "EXPO_PUBLIC_AUTH_DEV_SSO": "false",
         "EXPO_PUBLIC_API_URL": "https://aaspaas-02tx.onrender.com/api",
         "EXPO_PUBLIC_SSO_GOOGLE": "true",
-        "EXPO_PUBLIC_SSO_APPLE": "false"
+        "EXPO_PUBLIC_SSO_APPLE": "false",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "741681912002-23q6ms4cm97a11kshrv9h9cpmvtsmjbj.apps.googleusercontent.com"
       }
     },
     "production": {
@@ -26,7 +27,8 @@
         "EXPO_PUBLIC_AUTH_DEV_SSO": "false",
         "EXPO_PUBLIC_API_URL": "https://aaspaas-02tx.onrender.com/api",
         "EXPO_PUBLIC_SSO_GOOGLE": "true",
-        "EXPO_PUBLIC_SSO_APPLE": "false"
+        "EXPO_PUBLIC_SSO_APPLE": "false",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "741681912002-23q6ms4cm97a11kshrv9h9cpmvtsmjbj.apps.googleusercontent.com"
       }
     }
   },
